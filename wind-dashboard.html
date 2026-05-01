@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SotonMet Live Wind Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+https://cdn.jsdelivr.net/npm/chart.js>
+
+<style>
+:root {
+  --bg: #0f172a;
+  --panel: #111827;
+  --accent: #38bdf8;
+  --text: #e5e7eb;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  padding: 1.5rem;
+  font-size: 1.4rem;
+}
+
+.dashboard {
+  display: grid;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+
+.panel {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.controls {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+input {
+  background: #020617;
+  color: var(--text);
+  border: 1px solid #1e293b;
+  padding: 0.4rem;
+}
+
+canvas {
+  height: 320px !important;
+}
+</style>
+</head>
+
+<body>
+
+<header>🌬 Live SotonMet Wind Dashboard</header>
+
+<section class="dashboard">
+
+  <div class="panel controls">
+    <label>Date:
+      <input type="date" id="dateInput">
+    </label>
+    <label>Time Range:
+      <input type="range" id="hours" min="1" max="24" value="24">
+      <span id="hourLabel">24h</span>
+    </label>
+  </div>
+
+  <div class="panel"><canvas id="speedChart"></canvas></div>
+  <div class="panel"><canvas id="directionChart"></canvas></div>
+  <div class="panel"><canvas id="roseChart"></canvas></div>
+
+</section>
+
+<script>
+let rawData = [];
+let speedChart, directionChart, roseChart;
+
+document.getElementById("dateInput").valueAsDate = new Date();
+document.getElementById("hours").addEventListener("input", updateCharts);
+document.getElementById("dateInput").addEventListener("change", loadData);
+
+async function loadData() {
+  const date = document.getElementById("dateInput").value;
+  const res = await fetch(`/api/sotonmet?date=${date}`);
+  rawData = await res.json();
+  updateCharts();
+}
+
+function updateCharts() {
+  const hours = +document.getElementById("hours").value;
+  document.getElementById("hourLabel").innerText = hours + "h";
+
+  const data = rawData.slice(-hours * 60);
+  const labels = data.map(d => d.time);
+  const speeds = data.map(d => d.windSpeed);
+  const directions = data.map(d => d.windDir);
+
+  speedChart?.destroy();
+  directionChart?.destroy();
+  roseChart?.destroy();
+
+  speedChart = new Chart(document.getElementById("speedChart"), {
+    type: "line",
+    data: { labels, datasets: [{ label: "Wind Speed (m/s)", data: speeds, borderColor: "#38bdf8" }] },
+    options: { responsive: true }
+  });
+
+  directionChart = new Chart(document.getElementById("directionChart"), {
+    type: "line",
+    data: { labels, datasets: [{ label: "Wind Direction (°)", data: directions, borderColor: "#fbbf24" }] },
+    options: { scales: { y: { min: 0, max: 360 } } }
+  });
+
+  const sectors = Array(16).fill(0);
+  directions.forEach(d => sectors[Math.floor(((d % 360) / 360) * 16)]++);
+
+  roseChart = new Chart(document.getElementById("roseChart"), {
+    type: "radar",
+    data: {
+      labels: ["N","NNE","NE","ENE","E","ESE","SE","SSE",
+               "S","SSW","SW","WSW","W","WNW","NW","NNW"],
+      datasets: [{
+        label: "Wind Frequency",
+        data: sectors,
+        backgroundColor: "rgba(56,189,248,0.3)",
+        borderColor: "#38bdf8"
+      }]
+    },
+    options: { scales: { r: { beginAtZero: true } } }
+  });
+}
+
+// 🔴 LIVE UPDATE EVERY 60 SECONDS
+setInterval(loadData, 60000);
+loadData();
+</script>
+
+</body>
+</html>
