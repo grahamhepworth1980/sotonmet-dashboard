@@ -3,10 +3,9 @@ import fetch from "node-fetch";
 import * as cheerio from "cheerio";
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-app.use(express.static(".")); // serves your HTML file
-
+// ✅ API ROUTE FIRST
 app.get("/api/sotonmet", async (req, res) => {
   try {
     const date = req.query.date;
@@ -20,24 +19,36 @@ app.get("/api/sotonmet", async (req, res) => {
 
     const data = [];
 
-    $("#Table1 tr").each((i, row) => {
-      if (i === 0) return; // header row
-
+    $("table tr").each((i, row) => {
       const cols = $(row).find("td");
+      if (cols.length < 5) return;
 
-      data.push({
-        time: cols.eq(0).text().trim(),
-        windSpeed: parseFloat(cols.eq(3).text()),
-        windDir: parseFloat(cols.eq(4).text())
-      });
+      const time = cols.eq(0).text().trim();
+      const windSpeed = parseFloat(cols.eq(3).text());
+      const windDir = parseFloat(cols.eq(4).text());
+
+      if (!isNaN(windSpeed) && !isNaN(windDir)) {
+        data.push({ time, windSpeed, windDir });
+      }
     });
 
+    console.log("Rows parsed:", data.length);
     res.json(data);
+
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Failed to fetch data" });
   }
 });
 
+// ✅ STATIC FILES AFTER
+app.use(express.static("."));
+
+// ✅ ROOT FALLBACK
+app.get("/", (req, res) => {
+  res.sendFile(process.cwd() + "/wind-dashboard.html");
+});
+
 app.listen(PORT, () => {
-  console.log(`✅ Proxy running at http://localhost:${PORT}`);
+  console.log(`✅ Proxy running on port ${PORT}`);
 });
