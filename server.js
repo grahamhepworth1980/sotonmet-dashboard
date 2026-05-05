@@ -1,54 +1,53 @@
-import express from "express";
-import fetch from "node-fetch";
-import * as cheerio from "cheerio";
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// ✅ API ROUTE FIRST
 app.get("/api/sotonmet", async (req, res) => {
   try {
-    const date = req.query.date;
+    const dateStr = req.query.date; // YYYY-MM-DD
+    if (!dateStr) {
+      return res.status(400).json({ error: "Missing date" });
+    }
 
-    const response = await fetch(
-      `https://www.sotonmet.co.uk/search.aspx?searchdate=${date}`
-    );
+    const date = new Date(dateStr);
 
-    const html = await response.text();
-    const $ = cheerio.load(html);
+    const year = date.getUTCFullYear();
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    const monthName = date.toLocaleString("en-GB", { month: "long", timeZone: "UTC" });
+    const shortMonth = monthName.substring(0, 3);
+
+    const csvUrl =
+      `https://www.sotonmet.co.uk/archive/${year}/${monthName}/CSV/` +
+      `Sot${day}${shortMonth}${year}.csv`;
+
+    console.log("Fetching CSV:", csvUrl);
+
+    const response = await fetch(csvUrl);
+    if (!response.ok) {
+      return res.status(404).json({ error: "CSV not found" });
+    }
+
+    const csvText = await response.text();
+    const lines = csvText.trim().split("\n");
 
     const data = [];
 
-    $("table tr").each((i, row) => {
-      const cols = $(row).find("td");
-      if (cols.length < 5) return;
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(",");
 
-      const time = cols.eq(0).text().trim();
-      const windSpeed = parseFloat(cols.eq(3).text());
-      const windDir = parseFloat(cols.eq(4).text());
+      // Defensive check
+      if (cols.length < 6) continue;
+
+      const time = cols[0].trim();
+      const windDir = parseFloat(cols[3]);
+      const windSpeed = parseFloat(cols[4]);
 
       if (!isNaN(windSpeed) && !isNaN(windDir)) {
         data.push({ time, windSpeed, windDir });
       }
-    });
+    }
 
     console.log("Rows parsed:", data.length);
     res.json(data);
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to fetch data" });
+    res.status(500).json({ error: "Failed to process CSV" });
   }
-});
-
-// ✅ STATIC FILES AFTER
-app.use(express.static("."));
-
-// ✅ ROOT FALLBACK
-app.get("/", (req, res) => {
-  res.sendFile(process.cwd() + "/wind-dashboard.html");
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ Proxy running on port ${PORT}`);
 });
